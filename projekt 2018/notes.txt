@@ -1,0 +1,22 @@
+ZAPISKI ZA PROJEKT ORvTK 2018 - TIME SERIES REGRESSION
+
+*Uporabimo python 2.x !! Ker je Koširjeva koda preverjena samo za to verzijo
+
+- Za več uporabnikov imamo zbrane podatke o več uporabnikih (ustnice, razširjenost zenic ipd.),
+napovedati pa želimo valenco in vburjenost na podlagi znanega dataseta
+
+- model za vsakega uporabnika posebej: za vse skupaj
+
+- kakšno merilo vzeti za prileganje modela
+
+- koliko vzorcev za nazaj upoštevati
+
+- lahko poskusimo več različnih modelov?
+
+- Kunaver je rekel, da se je lani poznalo, če so uporabili več prijemov, s katerimi
+bi dosegli čim bolj stacionarno časovno vrsto
+
+- če bo čas lahko poskusimo še s convolutional neural network
+
+- cilj je, da skušamo čim bolje analizirati model (ga razumeti) in na predstavitvi čim 
+bolj razumljivo predstaviti sošolcem kaj smo delali (lahko uporabimo tablo/ppt/live demo,...)
