@@ -4,6 +4,7 @@ import pickle
 from ts_regress import ts_regress, ts_regress_eval
 
 # TODO list
+#JURE JE LOLEK, TILEN JE BOLEK
 # normalizacija casovnih vrst (naj bodo cim bolj stacionarne) - kot v laboratorijski vaji
 # vizualizacija podatkov
 
