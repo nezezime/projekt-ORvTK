@@ -1,14 +1,48 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
+import pandas as pd
 from ts_regress import ts_regress, ts_regress_eval
+from statsmodels.tsa.stattools import adfuller
 
 # TODO list
-#JURE JE LOLEK, TILEN JE BOLEK
 # normalizacija casovnih vrst (naj bodo cim bolj stacionarne) - kot v laboratorijski vaji
-# vizualizacija podatkov
+# vizualizacija podatkov -> vec grafov v eno sliko
 
-# variables
+
+# DEFINICIJE FUNKCIJ
+# preverjanje stacionarnosti
+def test_stationarity(timeSeries, window, label):
+
+    # pretvoba numpy arraya v pandas data frame
+    df = pd.DataFrame(timeSeries)
+
+    # tekoce povprecje in standardni odklon
+    rolMean = pd.rolling_mean(df, window=window)
+    rolStd = pd.rolling_std(df, window=window)
+
+    # prikaz statistike
+    plt.figure()
+    plt.plot(df, color='blue', label='Original')
+    plt.plot(rolMean, color='red', label='Rolling Mean')
+    plt.plot(rolStd, color='black', label='Rolling Std')
+
+    plt.legend(loc='best')
+    plt.title('tekoce povprecje in standardni odklon:' + label)
+    #plt.show()
+
+
+    #Perform Dickey-Fuller test:
+    print ('Results of Dickey-Fuller Test:')
+    dftest = adfuller(df.squeeze(), autolag='AIC')
+    print(np.ndim(dftest))
+    dfoutput = pd.Series(dftest[0:4], index=['Test Statistic', 'p-value', '#Lags Used', 'Number of Observations Used'])
+    for key, value in dftest[4].items():
+        dfoutput['Critical Value (%s)'%key] = value
+    print (dfoutput)
+
+
+# SPREMENLJIVKE
 uIDs = [10, 19, 20, 27, 34]  # IDji uporabnikov
 userCount = len(uIDs)
 
@@ -30,6 +64,7 @@ uDataSize = [len(reg_arousal[10]), len(reg_arousal[19]),
 maxDataSize = 3924
 print(uDataSize)
 
+
 # NASTAVLJANJE MODELA
 # dolocimo, koliko vzorcev nazaj upostevamo
 nBack = 10
@@ -49,9 +84,16 @@ for idx, val in enumerate(uIDs):
                       reg_rightPupilDiameter[val][0:dataSetLen]
                        ]).T
 
-print("data shape: \n")
+print("data shape:")
 print(X.shape)
 
+# STACIONARNOST CASOVNE VRSTE
+test_stationarity(X.T[0, :, 0], 12, 'usta')
+test_stationarity(X.T[0, :, 1], 12, 'desna zenica')
+test_stationarity(X.T[0, :, 2], 12, 'leva zenica')
+
+
+# UCENJE MODELA
 R2 = np.empty(shape=[userCount, nBack, nBack, nBack])  # hrani R^2 za vse kombinacije n
 R2SeriesAllUsers = np.empty(shape=[userCount, nBack * nBack * nBack])
 
