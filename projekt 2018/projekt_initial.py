@@ -61,16 +61,16 @@ reg_rightPupilDiameter = pickle.load(open('Rpupil.pckl', "rb"))     # premer des
 uDataSize = [len(reg_arousal[10]), len(reg_arousal[19]),
              len(reg_arousal[20]), len(reg_arousal[27]),
              len(reg_arousal[34])]
-maxDataSize = 3924
+maxDataSize = min(uDataSize)
 print(uDataSize)
 
 
 # NASTAVLJANJE MODELA
 # dolocimo, koliko vzorcev nazaj upostevamo
-nBack = 10
+nBack = 5
 
 # dolocimo velikost podatkovnega seta
-dataSetLen = 1000
+dataSetLen = 50
 
 # dolocimo, katero znacilko iscemo (label)
 Y = reg_arousal
@@ -100,7 +100,13 @@ R2SeriesAllUsers = np.empty(shape=[userCount, nBack * nBack * nBack])
 # izvedemo ucenje za vsakega uporabnika
 # regresija z metodo najmanjsih kvadratov (statsmodels.api.OLS)
 for idx, uID in enumerate(uIDs):
+
     print "computation running for user", uID
+
+    y = Y[uID][0:dataSetLen]
+    #print('data: ')
+    #print(y)
+    #print(X[idx])
 
     R2Series = np.empty(nBack * nBack * nBack)
 
@@ -109,7 +115,6 @@ for idx, uID in enumerate(uIDs):
     for n1 in range(0, nBack):
         for n2 in range(0, nBack):
             for n3 in range(0, nBack):
-                y = Y[uID][0:dataSetLen]                                              # nastavimo dolzino label
                 p_lags = [n1 + 1, n2 + 1, n3 + 1]
                 mod_ft = ts_regress(y, X[idx], p_lags)     # metoda najmanjsih kvadratov, tip: statsmodels.regression.linear_model.RegressionResultsWrapper
                 R2[idx][n1][n2][n3] = mod_ft.rsquared_adj
@@ -127,12 +132,6 @@ print(R2SeriesAllUsers.min())
 print(R2SeriesAllUsers.max())
 #print(R2[0])
 
-# maksimalni R^2 za vsakega uporabnika
-
-
-
-
-
-
-
-
+# R^2 je merilo, kako dobro se model prilega podatkom. Ce je enak 1 to pomeni da se model popolnoma prilega
+# podatkom. Ce je rezultat izven obmocja 0-1 to pomeni, da je model verjetno napacen, popolnoma narobe nastavljen,
+# imamo prevec znacilk ipd...
