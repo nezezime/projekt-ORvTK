@@ -115,12 +115,20 @@ for idx, val in enumerate(uIDs):
                                reg_emo_mouth[val][0:dataSetLen],
                                reg_valence[val][0:dataSetLen]]).T          # label
 
+
+plt.figure()
+plt.plot(XAllUsers[0, :, 1])
+plt.title('label')
+plt.show()
+
 # pandas dataframe mora biti 2D -> delamo za vsakega uporabnika posebej
 print(XAllUsers.shape)
 XAllUsers = pd.DataFrame(XAllUsers[0, :, :])
 print("data shape:")
 print(XAllUsers.shape)
 print(XAllUsers.head())
+
+
 
 ########################################################################################################################
 
@@ -328,15 +336,4 @@ plt.show()
 
 
 print("\nDone")
-
-
-
-
-
-# R^2 je merilo, kako dobro se model prilega podatkom. Ce je enak 1 to pomeni da se model popolnoma prilega
-# podatkom. Ce je rezultat izven obmocja 0-1 to pomeni, da je model verjetno napacen, popolnoma narobe nastavljen,
-# imamo prevec znacilk ipd...
-
-
-
 
