@@ -18,6 +18,7 @@ from keras import backend as K
 # poskusanje z dodajanjem/odstranjevanjem plasti
 # poskusanje iznicenja vpliva nakljucnega zacetnega stanja
 # prikaz avtokorelacije
+# prikazi, kako se napaka spreminja z epochi
 
 # preveri ce tensorflow uporablja
 print(device_lib.list_local_devices())
