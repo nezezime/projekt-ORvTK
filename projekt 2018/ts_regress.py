@@ -8,6 +8,7 @@ import numpy as np
 from scipy import stats
 import statsmodels.api as sm
 from sklearn.metrics import r2_score
+import pandas as pd
 
 # -----------------------------------------------------------------------------    
 # Time series regression 
@@ -74,9 +75,24 @@ def tsr_stack_indep(y, X, p_lags, s_lag=0):
 # @param: s_lag: where lags are starting 
 # @return: fitted model
 def ts_regress(y, X, p_lags, s_lag = 0):
-    
-    y_e, X_e = tsr_stack_indep(y, X, p_lags, s_lag) # Add delayed data 
-    model_fited = sm.OLS(y_e, X_e).fit()
+
+    y_e, X_e = tsr_stack_indep(y, X, p_lags, s_lag) # Add delayed data
+
+    #print(X.shape, y.shape)
+    xT, yT = test_to_Supervised(X, y, p_lags[0]) #TODO hardkodirano
+    #print('x, y: ')
+    #print(X)
+    #print(y)
+    #print('xe, ye: ')
+    #print(X_e)
+    #print(y_e)
+    #print('test: ')
+    #print(xT)
+    #print(yT)
+    #print('p_lags', p_lags)
+    #print(xT.shape)
+    model_fited = sm.OLS(yT, xT).fit()
+
     #params = model_fited.params
     #rsq_value = model_fited.rsquared_adj
     #rsq_value = results.rsquared
@@ -86,6 +102,20 @@ def ts_regress(y, X, p_lags, s_lag = 0):
     #print 'X_e.shape(' + str(X_e.shape[0]) + ', ' + str(X_e.shape[1]) + ')'
       
     return model_fited
+
+def test_to_Supervised(X, y, lag):
+
+    Xdf = pd.DataFrame(X)
+    Xcolumns = [Xdf.shift(i) for i in range(1, lag + 1)]
+    Xcolumns.append(Xdf)
+    X_ext = pd.concat(Xcolumns, axis=1)
+    X_ext = X_ext.dropna(0)
+
+    Xnp = np.roll(X_ext.values, 1, axis=1)
+    ynp = np.array(y[lag:])
+
+    return Xnp, ynp
+
 
 # Compute Rsq adjuste on fitted model    
 def ts_regress_eval(y_eval, X_eval, p_lags, model_fited, s_lag = 0):
