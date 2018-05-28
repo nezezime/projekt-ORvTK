@@ -47,6 +47,9 @@ def test_stationarity(timeSeries, window, label, plot):
     print(dfoutput)
 
 
+print("Done!")
+
+
 # SPREMENLJIVKE
 uIDs = [10, 19, 20, 27, 34]  # IDji uporabnikov
 userCount = len(uIDs)
@@ -85,8 +88,8 @@ for idx, val in enumerate(uIDs):
     valence[idx] = np.array([reg_valence[val][0:dataSetLen]])
     arousal[idx] = np.array([reg_arousal[val][0:dataSetLen]])
     
-    
-# TESTIRANJE ORIGINALNIH PODATKOV
+print("Done!")
+
 
 # tu dolocas za katerega uporabnika prikazujes, uporabi preslikavo naslovov
 user = 4 # user [0,  1,  2,  3,  4]
@@ -100,6 +103,9 @@ test_stationarity(arousal[user], 12, 'arousal', 1)
 
 ### VSEM PODATKOM PRISTEJEMO (NAJMANJSO VREDNOST + 1), ZATO DA DELUJE LOGARITEM
 
+# OPOMBA: ce veckrat pozenes to se np.amin(pupil) spremeni
+        # to kar moras na koncu pristevat, izracunaj ze v zgornjem razdelku
+
 #print(np.amax(pupil))
 #print(np.amin(pupil))
 pupil = pupil - np.amin(pupil) + 1 #to moras na koncu odsteti !!!
@@ -107,19 +113,33 @@ pupil = pupil - np.amin(pupil) + 1 #to moras na koncu odsteti !!!
 #print(np.amin(pupil))
 #print(type(pupil))
 
+# print(np.amax(mouth))
+# print(np.amin(mouth))
+mouth = mouth - np.amin(mouth) + 1 #to moras na koncu odsteti !!!
+# print(np.amax(mouth))
+# print(np.amin(mouth))
 
+# print(np.amax(valence))
+# print(np.amin(valence))
+valence = valence - np.amin(valence) + 1 #to moras na koncu odsteti !!!
+# print(np.amax(valence))
+# print(np.amin(valence))
 
-# AVG
+# print(np.amax(arousal))
+# print(np.amin(arousal))
+arousal = arousal - np.amin(arousal) + 1 #to moras na koncu odsteti !!!
+# print(np.amax(arousal))
+# print(np.amin(arousal))
 
 
 # TU IZBERI KATEREGA UPORABNIKA ZELIS
 # za enega izmed user [0,  1,  2,  3,  4]
                # ID   [10, 19, 20, 27, 34]
-user = 0
+user = 1
 
 # TU NASTAVI KATERI SET PODATKOV HOCES OBDELAT
 # pretvorba: numpy.ndarray ---> pandas.core.frame.DataFrame
-pandas = pd.DataFrame(pupil[user]) 
+pandas = pd.DataFrame(arousal[user]) 
 #print(type(pandas))
 
 # logaritmiranje podatkov
@@ -144,17 +164,14 @@ diff_log_avg_pandas.dropna(inplace=True) # vse NaN spusti?????
 test_stationarity(diff_log_avg_pandas, 12, 'diff_log_avg', 1)
 
 
-
-#EWMA
-
 # TU IZBERI KATEREGA UPORABNIKA ZELIS
 # za enega izmed user [0,  1,  2,  3,  4]
                # ID   [10, 19, 20, 27, 34]
-user = 0
+user = 1
 
 # TU NASTAVI KATERI SET PODATKOV HOCES OBDELAT
 # pretvorba: numpy.ndarray ---> pandas.core.frame.DataFrame
-pandas = pd.DataFrame(pupil[user]) 
+pandas = pd.DataFrame(arousal[user]) 
 #print(type(pandas))
 
 # logaritmiranje podatkov
@@ -179,20 +196,18 @@ diff_log_ewma_pandas.dropna(inplace=True) # vse NaN spusti?????
 test_stationarity(diff_log_ewma_pandas, 12, 'diff_log_ewma', 1)
 
 
-# SEASONAL DECOMPOSITION
-
 # TU IZBERI KATEREGA UPORABNIKA ZELIS
 # za enega izmed user [0,  1,  2,  3,  4]
                # ID   [10, 19, 20, 27, 34]
-user = 0
+user = 1
 
 # TU NASTAVI KATERI SET PODATKOV HOCES OBDELAT
 # logaritmiranje podatkov
-log_pandas = np.log(pupil[user])
+log_pandas = np.log(valence[user])
 #print(type(log_pandas))
 
 # DEKOMPOZICIJA
-decomposition = seasonal_decompose(log_pandas, freq=2)
+decomposition = seasonal_decompose(log_pandas, freq=100)
 
 #sedaj shranimo v posebne spremanljivke da lahko posebaj klicemo
 trend = decomposition.trend
