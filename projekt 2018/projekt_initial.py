@@ -54,6 +54,17 @@ def test_stationarity(timeSeries, window, label, plot):
 uIDs = [10, 19, 20, 27, 34]  # IDji uporabnikov
 userCount = len(uIDs)
 
+# vzorcna frekvenca za podatke je bila 40Hz (oziroma 10Hz downsamplano)
+# usta naj bi bila diskretna (NE uporabljaj ust), poskusimo zenico in valence
+# smiselno bi bilo poskusiti se z vecjimi zamiki
+# napovedi se delajo SAMO na podlagi tistega, kar je v X mnozici (AR model)
+# napovedi se delajo za trenutni y vzorec na podlagi trenutnega in preteklih X vzorcev
+
+#TODO
+# preveri ce se zamiki vrste delajo ok
+# na podlagi koeficientov izracunaj napovedi in poglej, ce se ujemajo z napovedmi .fittedvalues
+# preveri, v kaksnem vrstnem redu mod_ft vrne koeficiente
+
 # read pickle python format to dictionaries
 # pickle - serializes a python object into stream of bytes
 # vsak dictionary ima pet polj - za vsakega uporabnika eno
@@ -82,7 +93,7 @@ maxDataSize = min(uDataSize)
 nBack = 5
 
 # dolocimo velikost podatkovnega seta
-dataSetLen = 1000
+dataSetLen = 10
 
 # dolocimo vhodne znacilke (X) in label (Y)
 # sestavimo podatkovni set
@@ -111,6 +122,12 @@ print(Y.shape)
 # prikaz labela
 plt.figure()
 plt.plot(Y[0], color='blue', label='Original')
+plt.legend(loc='best')
+plt.title('Label for user 10')
+plt.show()
+
+plt.figure()
+plt.plot(X[0], color='blue', label='Original')
 plt.legend(loc='best')
 plt.title('Label for user 10')
 plt.show()
@@ -174,6 +191,9 @@ for idx, uID in enumerate(uIDs):
     #print(mod_ft.fittedvalues.shape)  # pofitane vrednosti so tipa numpy array
                                       # problem: toliko vzorcev kolikor najvec gledamo nazaj, toliko krajsi fit dobimo
 
+    # koeficiente modela vzeti iz mod_ft
+    print(mod_ft.params)
+
     # prikaz dejanskih in napovedanih podatkov
     yPred = mod_ft.fittedvalues
     yRef = y[-yPred.shape[0]:]
@@ -200,7 +220,4 @@ plt.show()
 # R^2 je merilo, kako dobro se model prilega podatkom. Ce je enak 1 to pomeni da se model popolnoma prilega
 # podatkom. Ce je rezultat izven obmocja 0-1 to pomeni, da je model verjetno napacen, popolnoma narobe nastavljen,
 # imamo prevec znacilk ipd...
-
-
-
 
