@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import pandas as pd
-from ts_regress import ts_regress, ts_regress_eval, test_to_Supervised
+from ts_regress import ts_regress, ts_regress_eval, test_to_Supervised, tsr_stack_indep
 from statsmodels.tsa.stattools import adfuller
 from sklearn.metrics import r2_score
 import statsmodels.api as smAPI
@@ -11,6 +11,20 @@ import statsmodels.api as smAPI
 # normalizacija casovnih vrst (naj bodo cim bolj stacionarne) - kot v laboratorijski vaji
 # vizualizacija podatkov -> vec grafov v eno sliko
 # delta pupil
+
+# POROCILO
+# 0. predprocesiranje zenice (rezultat je polmer zenice in ne sme biti <0) - nadomestimo z ustrezno interpolacijo
+# 1. poskus z drugim datasetom (air passengers)
+# 2. iskanje neizpolnjenih pogojev, zaradi katerih je modeliranje neuspesno
+#       kandidati:
+#        - napake v podatkih: manjkajoc, konstante,
+#        - sibka stacionarnost glede na upanje in varianco, (ce zadeva ni stacionarna glede na matematicno upanje (za varianco resitve v bistvu ni) napovedujemo diferenco )
+#                                                              -> vrsto diferenciramo enkrat do dvakrat in preverimo novo stacionarnost
+#        - sezone je treba odstranit
+#           -> pri sezonah je ponovadi
+# *samopodobnosti nima smisla upostevati dokler ARIMA ne da vsaj priblizno ok rezultata
+# 1.
+# 2. pokazemo da je problem stacionarnost, in da tudi po diferenciranju manjka ena od obeh stacionarnosti
 
 
 # DEFINICIJE FUNKCIJ
@@ -173,6 +187,14 @@ if showData:
 
     plt.show()
 
+# test pretvorbe v nadzorovano ucenje
+a = np.array([1, 2, 3, 4, 5, 6])
+b = np.array([11, 12, 13, 14, 15, 16])
+lag = 3
+print("test pretvorbe v nadzorovano ucenje")
+print(tsr_stack_indep(b, a, [lag])[1])
+print(test_to_Supervised(a, b, lag)[0])
+#exit(0)
 
 # DELITEV NA UCNO IN TESTNO MNOZICO
 X_train, X_test = X[:, 0:trainDataLen, :], X[:, trainDataLen:, :]
@@ -260,7 +282,8 @@ for idx, uID in enumerate(uIDs):
     print("model parameters: ", modelParams, mod_ft.params)
 
     for i in range(0, yPrMan.shape[0]):
-        predData = X[idx, i:i+nUser[0]+1, :]
+        #predData = X[idx, i:i+nUser[0]+1, :]
+        predData = X[idx, i:i + nUser[0], :]  # ce odrezemo stolpec trenutnih vrednosti znacilke
         yPrMan[i] = np.dot(modelParams, predData)
 
     ax2.plot(yPrMan, label='predicted')
