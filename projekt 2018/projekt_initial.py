@@ -13,6 +13,9 @@ import statsmodels.api as smAPI
 # delta pupil
 
 # POROCILO
+# nasa zelja je, da napovemo tezko merljive podatke (valence, arousal) iz lahko merljivih (usta, zenica)
+# ust nismo upostevali ker naj bi bile meritve diskretne
+
 # 0. predprocesiranje zenice (rezultat je polmer zenice in ne sme biti <0) - nadomestimo z ustrezno interpolacijo
 # 1. poskus z drugim datasetom (air passengers)
 # 2. iskanje neizpolnjenih pogojev, zaradi katerih je modeliranje neuspesno
@@ -74,11 +77,6 @@ userCount = len(uIDs)
 # napovedi se delajo SAMO na podlagi tistega, kar je v X mnozici (AR model)
 # napovedi se delajo za trenutni y vzorec na podlagi trenutnega in preteklih X vzorcev
 
-#TODO
-# preveri ce se zamiki vrste delajo ok
-# na podlagi koeficientov izracunaj napovedi in poglej, ce se ujemajo z napovedmi .fittedvalues
-# preveri, v kaksnem vrstnem redu mod_ft vrne koeficiente
-
 # read pickle python format to dictionaries
 # pickle - serializes a python object into stream of bytes
 # vsak dictionary ima pet polj - za vsakega uporabnika eno
@@ -97,6 +95,8 @@ uDataSize = [len(reg_arousal[10]), len(reg_arousal[19]),
 maxDataSize = min(uDataSize)
 #print(uDataSize)
 
+
+
 #################################### NASTAVLJANJE MODELA ###############################################################
 # dolocimo, koliko vzorcev nazaj upostevamo
 nBack = 5
@@ -108,21 +108,68 @@ dataSetLen = maxDataSize
 trainDataLen = 2000
 
 # True ce zelimo pred analizo prikazati podatke
-showData = True
+showData = False
+
+# True SAMO ce napovedujemo iz premera zenice, nekoliko izboljsa R2
+thresholdFeatures = True
 
 # dolocimo vhodne znacilke (X) in label (Y)
-# sestavimo podatkovni set
-X = np.zeros(shape=[len(uIDs), dataSetLen, 1])
-Y = np.zeros(shape=[len(uIDs), dataSetLen])
+# sestavimo podatkovni set, prvih 10 vzorcev izpustimo zaradi outlierjev
+X = np.zeros(shape=[len(uIDs), dataSetLen - 10, 1])
+Y = np.zeros(shape=[len(uIDs), dataSetLen - 10])
 for idx, val in enumerate(uIDs):
     print(val)
     X[idx] = np.array([#reg_leftPupilDiameter[val][0:dataSetLen],
                        #reg_rightPupilDiameter[val][0:dataSetLen],
-                       reg_leftPupilDiameter[val][0:dataSetLen]]).T
-    Y[idx] = np.array([reg_valence[val][0:dataSetLen]])
+                       reg_leftPupilDiameter[val][10:dataSetLen]]).T
+    Y[idx] = np.array([reg_valence[val][10:dataSetLen]])
 
 
 ########################################################################################################################
+
+
+# PREDPROCESIRANJE PODATKOV - SAMO ZA ZENICO
+pupilThreshold = 1
+def threshold_data(data, threshold):
+    # @param data - numpy array [users, values, 1]
+    for user in range(0, data.shape[0]):
+        i = 1
+        while i < data.shape[1] - 1:
+            if data[user, i, :] < threshold:
+
+                intStart = data[user, i - 1, 0]
+                intStartIdx = i-1
+                j = 0
+                if data[user, i + 1, :] < threshold:
+                    j = i + 1
+                    while data[user, j, :] < threshold:
+                        j += 1
+
+                    intEnd = data[user, j, 0]
+                    intEndIdx = j
+                else:
+                    intEnd = data[user, i + 1, 0]
+                    intEndIdx = i+1
+
+                #print(intStart, intEnd)
+                #print(intStartIdx, intEndIdx)
+
+                # replace the values below threshold
+                for idx in range(intStartIdx + 1, intEndIdx):
+                    data[user, idx, 0] = float(intEnd + intStart)/2
+
+                i = intEndIdx
+
+            i += 1
+
+    return data
+
+
+# test
+#print(threshold_data(np.array([[[2], [0], [0], [2]], [[2], [2], [2], [2]], [[2], [2], [2], [2]]]), pupilThreshold))
+
+if thresholdFeatures:
+    X = threshold_data(X, pupilThreshold)
 
 print("data shape:")
 print(X.shape)
@@ -133,13 +180,6 @@ print(Y.shape)
 #test_stationarity(X.T[0, :, 1], 12, 'desna zenica', 0)
 #test_stationarity(X.T[0, :, 2], 12, 'leva zenica', 0))
 #test_stationarity(Y[0], 12, 'label user 19', 1)
-
-# prikaz labela
-#plt.figure()
-#plt.plot(X[0], color='blue', label='Original')
-#plt.legend(loc='best')
-#plt.title('Label for user 10')
-#plt.show()
 
 # PRIKAZ PODATKOV
 if showData:
@@ -188,13 +228,17 @@ if showData:
     plt.show()
 
 # test pretvorbe v nadzorovano ucenje
-a = np.array([1, 2, 3, 4, 5, 6])
-b = np.array([11, 12, 13, 14, 15, 16])
-lag = 3
-print("test pretvorbe v nadzorovano ucenje")
-print(tsr_stack_indep(b, a, [lag])[1])
-print(test_to_Supervised(a, b, lag)[0])
-#exit(0)
+#a = np.array([1, 2, 3, 4, 5, 6])
+#b = np.array([11, 12, 13, 14, 15, 16])
+#lag = 3
+#print("test pretvorbe v nadzorovano ucenje")
+#print(tsr_stack_indep(b, a, [lag])[1])
+#print(test_to_Supervised(a, b, lag)[0])
+
+
+def compute_r_squared(actual, predicted):
+    return r2_score(actual, predicted)
+
 
 # DELITEV NA UCNO IN TESTNO MNOZICO
 X_train, X_test = X[:, 0:trainDataLen, :], X[:, trainDataLen:, :]
@@ -210,8 +254,6 @@ for idx, uID in enumerate(uIDs):
 
     print("computation running for user", uID)
 
-    y = y_train[idx]
-
     R2Series = np.empty(nBack * nBack * nBack)
     R2User = -5  # R^2 za trenutnega uporabnika
     R2UserReg = 0
@@ -219,86 +261,69 @@ for idx, uID in enumerate(uIDs):
     nUser = [0, 0, 0]
 
     # delitev na ucno in testno mnozico
-
-
-    # regresijo izvajamo za vse mozne kombinacije propagacij
-    # cnt = 0
-    #for n1 in range(1, nBack + 1):
-    #    for n2 in range(1, nBack + 1):
-    #        for n3 in range(1, nBack + 1):
-    #            p_lags = [n1, n2, n3]
-    #            mod_ft = ts_regress(y, X[idx], p_lags)     # metoda najmanjsih kvadratov, tip: statsmodels.regression.linear_model.RegressionResults
-    #            #R2Series[cnt] = mod_ft.rsquared_adj
-
-                #if mod_ft.rsquared_adj > R2User:
-                #    R2User = mod_ft.rsquared_adj
-                #    nUser = [n1, n2, n3]
-
-                # izracun R2 za dano iteracijo
-    #            R2Curr = r2_score(y[-mod_ft.fittedvalues.shape[0]:], mod_ft.fittedvalues)
-    #            if R2Curr > R2User:
-    #                R2User = R2Curr
-    #                nUser = [n1, n2, n3]
-
-    #            cnt += 1
+    y = y_train[idx]
+    x = X_train[idx]
 
     for n in range(1, nBack):
-        mod_ft = ts_regress(y, X_train[idx], [n])
-        R2Curr = r2_score(y[-mod_ft.fittedvalues.shape[0]:], mod_ft.fittedvalues)
+        mod_ft = ts_regress(y, x, [n])
+        R2Curr = r2_score(y[-mod_ft.fittedvalues.shape[0]:], mod_ft.fittedvalues)  # sklearn R2 da pravi rezultat
         #R2Curr = mod_ft.rsquared_adj
         if R2Curr > R2User:
             R2User = R2Curr
             R2UserAdj = mod_ft.rsquared_adj
             R2UserReg = mod_ft.rsquared
-            nUser = [n, 0, 0]
+            nUser = [n]
 
     # izpisi najvecji R2
-    print('max R^2: ', R2User, 'for n: ', nUser)
+    print('max R^2: ', R2User, 'for n: ', nUser[0] + 1)
     print('rsquared_adj:', R2UserAdj, 'rsquared:', R2UserReg, 'sklearn r2:', R2User)
 
+    # VALIDACIJA MODELA
     # pokazi fit za najboljsi R2
-    mod_ft = ts_regress(y, X_train[idx], nUser) #prej: nUser
-    #print(mod_ft.fittedvalues.shape)  # pofitane vrednosti so tipa numpy array
-                                      # problem: toliko vzorcev kolikor najvec gledamo nazaj, toliko krajsi fit dobimo
+    mod_ft = ts_regress(y, x, nUser)
 
-    # koeficiente modela vzeti iz mod_ft
-    #print(mod_ft.params)
+    # pofitane vrednosti so tipa numpy array
+    # problem: toliko vzorcev kolikor najvec gledamo nazaj, toliko krajsi fit dobimo
 
-    #TODO UCENJE NA TESTNEM DATASETU
-    # prikaz dejanskih in napovedanih podatkov
+    # 1. metoda: fittedvalues -> neuporabno, saj uporabi podatke ucne mnozice
     yPred = mod_ft.fittedvalues
-    yRefTrain = y[-yPred.shape[0]:]
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
-    ax1.plot(yPred, label='predicted')
-    ax1.plot(yRefTrain, label='actual')
-    ax1.legend(loc='best')
-    ax1.set_title("Model fit for user"+str(uID))
+    yRef = y_test[idx, nBack:]
+    fig, (ax2, ax3) = plt.subplots(2, 1)
+    #ax1.plot(yPred, label='predicted')
+    #ax1.plot(yRef, label='actual')
+    #ax1.legend(loc='best')
+    #ax1.set_title("Model fit to training set for user"+str(uID))
 
-    # rocni izracun predvidenih vrednosti
-    #print(X.shape)
-    yPrMan = np.zeros(X.shape[1] - nBack)
-    #modelParams = mod_ft.params
-    modelParams = np.flip(mod_ft.params, axis=0)  # parametre modela ocitno vrne v vrstnem redu: B0, B1, ...
-    print("model parameters: ", modelParams, mod_ft.params)
+    # 2. metoda: koeficiente modela se da dobiti in predikcije racunati rocno
+    # print(mod_ft.params)
+    # print(X.shape)
+    yPredMan = np.zeros(y_test.shape[1] - nBack)
+    print(yPredMan.shape)
+    modelParams = np.flip(mod_ft.params, axis=0)  # parametre modela vrne v vrstnem redu: B0, B1, ...
+    print("model parameters: ", mod_ft.params)
 
-    for i in range(0, yPrMan.shape[0]):
-        #predData = X[idx, i:i+nUser[0]+1, :]
-        predData = X[idx, i:i + nUser[0], :]  # ce odrezemo stolpec trenutnih vrednosti znacilke
-        yPrMan[i] = np.dot(modelParams, predData)
+    for i in range(0, yPredMan.shape[0]):
+        predData = X_test[idx, i:i+nUser[0]+1, :]
+        #predData = X[idx, i:i + nUser[0], :]  # ce odrezemo stolpec trenutnih vrednosti znacilke
+        yPredMan[i] = np.dot(modelParams, predData)
 
-    ax2.plot(yPrMan, label='predicted')
-    ax2.plot(yRefTrain, label='actual')
+    r2Man = compute_r_squared(yRef[0:(-nBack+1)], yPredMan[nBack-1:])  # popravimo zamike setov
+
+    ax2.plot(yPredMan[nBack-1:], label='predicted')
+    ax2.plot(yRef, label='actual')
     ax2.legend(loc='best')
-    ax2.set_title("Manual model predict for user" + str(uID))
+    ax2.set_title("Manual model predict for user " + str(uID) + ", R2 score %.4f" % r2Man)
 
-    # predikcija z uporabo metode predict
-    testData, _ = test_to_Supervised(X[idx], y, nUser[0])
-    yPr = mod_ft.predict(testData)  # Call self.model.predict with self.params as the first argument.
+    # 3. metoda: predikcija z uporabo metode predict
+    testData, _ = test_to_Supervised(X_test[idx], y_test[idx], nUser[0])
+    yPredAuto = mod_ft.predict(testData)  # Call self.model.predict with self.params as the first argument.
 
-    ax3.plot(yPr, label='predicted')
-    ax3.plot(yRefTrain, label='actual')
+    ax3.plot(yPredAuto[nBack-1:], label='predicted')
+    ax3.plot(yRef, label='actual')
     ax3.legend(loc='best')
-    ax3.set_title("Model predict for user" + str(uID))
+    ax3.set_title("Model predict for user " + str(uID))
+
+    print(yRef.shape, yPredMan.shape, yPredAuto.shape)
 
     #fig, ax = plt.subplots()
     # This creates one graph with the scatterplot of observed values compared to fitted values.
