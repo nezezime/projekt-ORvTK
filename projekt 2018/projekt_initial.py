@@ -10,22 +10,23 @@ import statsmodels.api as smAPI
 # TODO list
 # normalizacija casovnih vrst (naj bodo cim bolj stacionarne) - kot v laboratorijski vaji
 # vizualizacija podatkov -> vec grafov v eno sliko
-# delta pupil
-
-# POROCILO
-# nasa zelja je, da napovemo tezko merljive podatke (valence, arousal) iz lahko merljivih (usta, zenica)
-# ust nismo upostevali ker naj bi bile meritve diskretne
-
-# 0. predprocesiranje zenice (rezultat je polmer zenice in ne sme biti <0) - nadomestimo z ustrezno interpolacijo
-# 1. poskus z drugim datasetom (air passengers)
-# 2. iskanje neizpolnjenih pogojev, zaradi katerih je modeliranje neuspesno
-#       kandidati:
-#        - napake v podatkih: manjkajoc, konstante,
-#        - sibka stacionarnost glede na upanje in varianco, (ce zadeva ni stacionarna glede na matematicno upanje (za varianco resitve v bistvu ni) napovedujemo diferenco )
-#                                                              -> vrsto diferenciramo enkrat do dvakrat in preverimo novo stacionarnost
+# delta pupiljoc, konstante,
+#        - sibka stacionarnost gled
+#
+# # POROCILO
+# # nasa zelja je, da napovemo tezko merljive podatke (valence, arousal) iz lahko merljivih (usta, zenica)
+# # ust nismo upostevali ker naj bi bile meritve diskretne
+#
+# # 0. predprocesiranje zenice (rezultat je polmer zenice in ne sme biti <0) - nadomestimo z ustrezno interpolacijo
+# # 1. poskus z drugim datasetom (air passengers)
+# # 2. iskanje neizpolnjenih pogojev, zaradi katerih je modeliranje neuspesno
+# #       kandidati:
+# #        - napake v podatkih: manjkae na upanje in varianco, (ce zadeva ni stacionarna glede na matematicno upanje (za varianco resitve v bistvu ni) napovedujemo diferenco )
+#                                               -> vrsto diferenciramo enkrat do dvakrat in preverimo novo stacionarnost
 #        - sezone je treba odstranit
-#           -> pri sezonah je ponovadi
 # *samopodobnosti nima smisla upostevati dokler ARIMA ne da vsaj priblizno ok rezultata
+# 3. poskus z drugim modelom (LSTM) ce bo cas
+#
 # 1.
 # 2. pokazemo da je problem stacionarnost, in da tudi po diferenciranju manjka ena od obeh stacionarnosti
 
@@ -54,18 +55,75 @@ def test_stationarity(timeSeries, window, label, plot):
 
         plt.legend(loc='best')
         plt.title('tekoce povprecje in standardni odklon:' + label)
-        plt.show()
+        #plt.show()
 
 
     #Perform Dickey-Fuller test:
     print('\nResults of Dickey-Fuller Test:')
     dftest = adfuller(df.squeeze(), autolag='AIC')
-    print(np.ndim(dftest))
+    #print(np.ndim(dftest))
     dfoutput = pd.Series(dftest[0:4], index=['Test Statistic', 'p-value', '#Lags Used', 'Number of Observations Used'])
     for key, value in dftest[4].items():
         dfoutput['Critical Value (%s)' % key] = value
     print(dfoutput)
 
+def test_stationarity_dataset(features, label, window, title):
+    # @brief test stacionarnosti za celoten set podatkov, trenutno deluje samo za eno znacilko
+
+    figFeat, axesFeat = plt.subplots(3, 2)
+    figLab, axesLab = plt.subplots(3, 2)
+
+    figFeat.suptitle('feature, ' + title + ' window size: ' + str(window))
+    figLab.suptitle('label, ' + title + ' window size: ' + str(window))
+
+    for user in range(0, features.shape[0]):
+
+        dfFeat = pd.DataFrame(features[user, :, 0])
+        dfLab = pd.DataFrame(label[user, :])
+
+        rolMeanFeat = pd.rolling_mean(dfFeat, window=window)
+        rolMeanLab = pd.rolling_mean(dfLab, window=window)
+
+        rolStdFeat = pd.rolling_var(dfFeat, window=window)
+        rolStdLab = pd.rolling_var(dfLab, window=window)
+
+        # vizualizacija
+        idxy = user % 3
+        idxx = int(user/3)
+
+        axesFeat[idxy, idxx].plot(dfFeat, label='data')
+        axesFeat[idxy, idxx].plot(rolMeanFeat, label='rolling mean')
+        axesFeat[idxy, idxx].plot(rolStdFeat, label='rolling variance')
+        axesFeat[idxy, idxx].legend(loc='best')
+        axesFeat[idxy, idxx].set_title('Feature for user {}'.format(uIDs[user]))
+
+        axesLab[idxy, idxx].plot(dfLab, label='data')
+        axesLab[idxy, idxx].plot(rolMeanLab, label='rolling mean')
+        axesLab[idxy, idxx].plot(rolStdLab, label='rolling variance')
+        axesLab[idxy, idxx].legend(loc='best')
+        axesLab[idxy, idxx].set_title('Label for user {}'.format(uIDs[user]))
+
+
+        # augumented Dickey-Fuller test
+        print('\nFeature ADF test results ' + title + ' for user {}'.format(uIDs[user]))
+        dftest = adfuller(dfFeat.squeeze(), autolag='AIC')
+        dfoutput = pd.Series(dftest[0:4],
+                             index=['Test Statistic', 'p-value', '#Lags Used', 'Number of Observations Used'])
+        for key, value in dftest[4].items():
+            dfoutput['Critical Value (%s)' % key] = value
+        print(dfoutput)
+
+        print('\nLabel ADF test results ' + title + ' for user {}'.format(uIDs[user]))
+        dftest = adfuller(dfLab.squeeze(), autolag='AIC')
+        dfoutput = pd.Series(dftest[0:4],
+                             index=['Test Statistic', 'p-value', '#Lags Used', 'Number of Observations Used'])
+        for key, value in dftest[4].items():
+            dfoutput['Critical Value (%s)' % key] = value
+        print(dfoutput)
+
+
+
+    #plt.show()
 
 # SPREMENLJIVKE
 uIDs = [10, 19, 20, 27, 34]  # IDji uporabnikov
@@ -99,7 +157,7 @@ maxDataSize = min(uDataSize)
 
 #################################### NASTAVLJANJE MODELA ###############################################################
 # dolocimo, koliko vzorcev nazaj upostevamo
-nBack = 5
+nBack = 10
 
 # dolocimo velikost podatkovnega seta
 dataSetLen = maxDataSize
@@ -112,6 +170,12 @@ showData = False
 
 # True SAMO ce napovedujemo iz premera zenice, nekoliko izboljsa R2
 thresholdFeatures = True
+
+# True ce uporabimo diferenciranje prvega reda
+differencing = True
+
+# velikost drsecega okna za racunanje tekocega povprecja, variance, ...
+slidingWindowSize = 100
 
 # dolocimo vhodne znacilke (X) in label (Y)
 # sestavimo podatkovni set, prvih 10 vzorcev izpustimo zaradi outlierjev
@@ -176,10 +240,32 @@ print(X.shape)
 print(Y.shape)
 
 # STACIONARNOST CASOVNE VRSTE
-#test_stationarity(X.T[0, :, 0], 12, 'usta', 0)
-#test_stationarity(X.T[0, :, 1], 12, 'desna zenica', 0)
-#test_stationarity(X.T[0, :, 2], 12, 'leva zenica', 0))
-#test_stationarity(Y[0], 12, 'label user 19', 1)
+#test_stationarity(X.T[0, :, 0], 20, 'zenica', 1)
+#test_stationarity(Y[0, :], 20, 'label', 1)
+test_stationarity_dataset(X, Y, slidingWindowSize, 'before differencing')
+
+# DIFERENCIRANJE PODATKOV
+if differencing:
+
+    #X = X[:, 1:, :]
+    for user in range(0, Y.shape[0]):
+        for i in range(0, Y.shape[1] - 1):
+            Y[user, i] = Y[user, i+1] - Y[user, i]
+            X[user, i, 0] = X[user, i+1, 0] - X[user, i, 0]
+
+    Y = Y[:, :-1]
+    X = X[:, :-1, :]
+
+    print("data shape after differencing: ")
+    print(X.shape)
+    print(Y.shape)
+
+    # ponovni test stacionarnosti
+    #test_stationarity(X.T[0, :, 0], 20, 'zenica', 1)
+    #test_stationarity(Y[0, :], 20, 'label', 1)
+    test_stationarity_dataset(X, Y, slidingWindowSize, 'after differencing')
+
+plt.show()
 
 # PRIKAZ PODATKOV
 if showData:
@@ -303,9 +389,10 @@ for idx, uID in enumerate(uIDs):
     print("model parameters: ", mod_ft.params)
 
     for i in range(0, yPredMan.shape[0]):
-        predData = X_test[idx, i:i+nUser[0]+1, :]
-        #predData = X[idx, i:i + nUser[0], :]  # ce odrezemo stolpec trenutnih vrednosti znacilke
+        #predData = X_test[idx, i:i+nUser[0]+1, :]
+        predData = X[idx, i:i + nUser[0], :]  # ce odrezemo stolpec trenutnih vrednosti znacilke
         yPredMan[i] = np.dot(modelParams, predData)
+
 
     r2Man = compute_r_squared(yRef[0:(-nBack+1)], yPredMan[nBack-1:])  # popravimo zamike setov
 
