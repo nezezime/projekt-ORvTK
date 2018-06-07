@@ -2,33 +2,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import pandas as pd
-from ts_regress import ts_regress, ts_regress_eval, test_to_Supervised, tsr_stack_indep
+from ts_regress import ts_regress, test_to_Supervised
 from statsmodels.tsa.stattools import adfuller
 from sklearn.metrics import r2_score
-import statsmodels.api as smAPI
 
-# TODO list
-# normalizacija casovnih vrst (naj bodo cim bolj stacionarne) - kot v laboratorijski vaji
-# vizualizacija podatkov -> vec grafov v eno sliko
-# delta pupiljoc, konstante,
-#        - sibka stacionarnost gled
+# POROCILO
+# nasa zelja je, da napovemo tezko merljive podatke (valence, arousal) iz lahko merljivih (usta, zenica)
+# ust nismo upostevali ker naj bi bile meritve diskretne
 #
-# # POROCILO
-# # nasa zelja je, da napovemo tezko merljive podatke (valence, arousal) iz lahko merljivih (usta, zenica)
-# # ust nismo upostevali ker naj bi bile meritve diskretne
-#
-# # 0. predprocesiranje zenice (rezultat je polmer zenice in ne sme biti <0) - nadomestimo z ustrezno interpolacijo
-# # 1. poskus z drugim datasetom (air passengers)
-# # 2. iskanje neizpolnjenih pogojev, zaradi katerih je modeliranje neuspesno
-# #       kandidati:
-# #        - napake v podatkih: manjkae na upanje in varianco, (ce zadeva ni stacionarna glede na matematicno upanje (za varianco resitve v bistvu ni) napovedujemo diferenco )
+# 0. predprocesiranje zenice (rezultat je polmer zenice in ne sme biti <0) - nadomestimo z ustrezno interpolacijo
+# 1. poskus z drugim datasetom (air passengers)
+# 2. iskanje neizpolnjenih pogojev, zaradi katerih je modeliranje neuspesno
+#       kandidati:
+#        - napake v podatkih: manjkae na upanje in varianco, (ce zadeva ni stacionarna glede na matematicno upanje
+#                                                           (za varianco resitve v bistvu ni) napovedujemo diferenco )
 #                                               -> vrsto diferenciramo enkrat do dvakrat in preverimo novo stacionarnost
 #        - sezone je treba odstranit
 # *samopodobnosti nima smisla upostevati dokler ARIMA ne da vsaj priblizno ok rezultata
 # 3. poskus z drugim modelom (LSTM) ce bo cas
-#
-# 1.
-# 2. pokazemo da je problem stacionarnost, in da tudi po diferenciranju manjka ena od obeh stacionarnosti
 
 
 # DEFINICIJE FUNKCIJ
@@ -55,7 +46,7 @@ def test_stationarity(timeSeries, window, label, plot):
 
         plt.legend(loc='best')
         plt.title('tekoce povprecje in standardni odklon:' + label)
-        #plt.show()
+        plt.show()
 
 
     #Perform Dickey-Fuller test:
@@ -66,6 +57,7 @@ def test_stationarity(timeSeries, window, label, plot):
     for key, value in dftest[4].items():
         dfoutput['Critical Value (%s)' % key] = value
     print(dfoutput)
+
 
 def test_stationarity_dataset(features, label, window, title):
     # @brief test stacionarnosti za celoten set podatkov, trenutno deluje samo za eno znacilko
@@ -81,6 +73,7 @@ def test_stationarity_dataset(features, label, window, title):
         dfFeat = pd.DataFrame(features[user, :, 0])
         dfLab = pd.DataFrame(label[user, :])
 
+        # nova verzija pandas vpeljuje drugacen klic metod
         rolMeanFeat = pd.rolling_mean(dfFeat, window=window)
         rolMeanLab = pd.rolling_mean(dfLab, window=window)
 
@@ -103,7 +96,6 @@ def test_stationarity_dataset(features, label, window, title):
         axesLab[idxy, idxx].legend(loc='best')
         axesLab[idxy, idxx].set_title('Label for user {}'.format(uIDs[user]))
 
-
         # augumented Dickey-Fuller test
         print('\nFeature ADF test results ' + title + ' for user {}'.format(uIDs[user]))
         dftest = adfuller(dfFeat.squeeze(), autolag='AIC')
@@ -122,78 +114,6 @@ def test_stationarity_dataset(features, label, window, title):
         print(dfoutput)
 
 
-
-    #plt.show()
-
-# SPREMENLJIVKE
-uIDs = [10, 19, 20, 27, 34]  # IDji uporabnikov
-userCount = len(uIDs)
-
-# vzorcna frekvenca za podatke je bila 40Hz (oziroma 10Hz downsamplano)
-# usta naj bi bila diskretna (NE uporabljaj ust), poskusimo zenico in valence
-# smiselno bi bilo poskusiti se z vecjimi zamiki
-# napovedi se delajo SAMO na podlagi tistega, kar je v X mnozici (AR model)
-# napovedi se delajo za trenutni y vzorec na podlagi trenutnega in preteklih X vzorcev
-
-# read pickle python format to dictionaries
-# pickle - serializes a python object into stream of bytes
-# vsak dictionary ima pet polj - za vsakega uporabnika eno
-reg_arousal = pickle.load(open('arousal.pckl', "rb"))               # vzburjenost/vznemirjenje
-reg_valence = pickle.load(open('valence.pckl', "rb"))               # valenca/prisotnost
-reg_times = pickle.load(open('times.pckl', "rb"))                   # casovne znamke
-reg_emo_mouth = pickle.load(open('mouth.pckl', "rb"))               # usta
-reg_leftPupilDiameter = pickle.load(open('Lpupil.pckl', "rb"))      # premer leve zenice  #IDENTICNA
-reg_rightPupilDiameter = pickle.load(open('Rpupil.pckl', "rb"))     # premer desne zenice #IDENTICNA
-
-# dictionary se bere po kljucu
-# vsak uporabnik ima razlicno dolzino casovne vrste
-uDataSize = [len(reg_arousal[10]), len(reg_arousal[19]),
-             len(reg_arousal[20]), len(reg_arousal[27]),
-             len(reg_arousal[34])]
-maxDataSize = min(uDataSize)
-#print(uDataSize)
-
-
-
-#################################### NASTAVLJANJE MODELA ###############################################################
-# dolocimo, koliko vzorcev nazaj upostevamo
-nBack = 10
-
-# dolocimo velikost podatkovnega seta
-dataSetLen = maxDataSize
-
-# dolocimo, kaksno dolzino podatkovnega seta namenimo ucni mnozici
-trainDataLen = 2000
-
-# True ce zelimo pred analizo prikazati podatke
-showData = False
-
-# True SAMO ce napovedujemo iz premera zenice, nekoliko izboljsa R2
-thresholdFeatures = True
-
-# True ce uporabimo diferenciranje prvega reda
-differencing = True
-
-# velikost drsecega okna za racunanje tekocega povprecja, variance, ...
-slidingWindowSize = 100
-
-# dolocimo vhodne znacilke (X) in label (Y)
-# sestavimo podatkovni set, prvih 10 vzorcev izpustimo zaradi outlierjev
-X = np.zeros(shape=[len(uIDs), dataSetLen - 10, 1])
-Y = np.zeros(shape=[len(uIDs), dataSetLen - 10])
-for idx, val in enumerate(uIDs):
-    print(val)
-    X[idx] = np.array([#reg_leftPupilDiameter[val][0:dataSetLen],
-                       #reg_rightPupilDiameter[val][0:dataSetLen],
-                       reg_leftPupilDiameter[val][10:dataSetLen]]).T
-    Y[idx] = np.array([reg_valence[val][10:dataSetLen]])
-
-
-########################################################################################################################
-
-
-# PREDPROCESIRANJE PODATKOV - SAMO ZA ZENICO
-pupilThreshold = 1
 def threshold_data(data, threshold):
     # @param data - numpy array [users, values, 1]
     for user in range(0, data.shape[0]):
@@ -229,19 +149,73 @@ def threshold_data(data, threshold):
     return data
 
 
-# test
-#print(threshold_data(np.array([[[2], [0], [0], [2]], [[2], [2], [2], [2]], [[2], [2], [2], [2]]]), pupilThreshold))
+# SPREMENLJIVKE
+uIDs = [10, 19, 20, 27, 34]  # IDji uporabnikov
+userCount = len(uIDs)
 
+# read pickle python format to dictionaries
+# pickle - serializes a python object into stream of bytes
+# vsak dictionary ima pet polj - za vsakega uporabnika eno
+reg_arousal = pickle.load(open('arousal.pckl', "rb"))               # vzburjenost/vznemirjenje
+reg_valence = pickle.load(open('valence.pckl', "rb"))               # valenca/prisotnost
+reg_times = pickle.load(open('times.pckl', "rb"))                   # casovne znamke
+reg_emo_mouth = pickle.load(open('mouth.pckl', "rb"))               # usta
+reg_leftPupilDiameter = pickle.load(open('Lpupil.pckl', "rb"))      # premer leve zenice  #IDENTICNA
+reg_rightPupilDiameter = pickle.load(open('Rpupil.pckl', "rb"))     # premer desne zenice #IDENTICNA
+
+# dictionary se bere po kljucu
+# vsak uporabnik ima razlicno dolzino casovne vrste
+uDataSize = [len(reg_arousal[10]), len(reg_arousal[19]),
+             len(reg_arousal[20]), len(reg_arousal[27]),
+             len(reg_arousal[34])]
+maxDataSize = min(uDataSize)
+# print(uDataSize)
+
+#################################### NASTAVLJANJE MODELA ###############################################################
+# dolocimo, koliko vzorcev nazaj upostevamo
+nBack = 12
+
+# dolocimo velikost podatkovnega seta
+dataSetLen = maxDataSize
+
+# dolocimo, kaksno dolzino podatkovnega seta namenimo ucni mnozici
+trainDataLen = 1500
+
+# True ce zelimo pred analizo prikazati podatke
+showData = False
+
+# True SAMO ce napovedujemo iz premera zenice, nekoliko izboljsa R2
+thresholdFeatures = True
+
+# True ce uporabimo diferenciranje prvega reda
+differencing = True
+
+# velikost drsecega okna za racunanje tekocega povprecja, variance, ...
+slidingWindowSize = 20
+
+# dolocimo vhodne znacilke (X) in label (Y)
+# sestavimo podatkovni set, prvih 10 vzorcev izpustimo zaradi outlierjev
+X = np.zeros(shape=[len(uIDs), dataSetLen - 10, 1])
+Y = np.zeros(shape=[len(uIDs), dataSetLen - 10])
+for idx, val in enumerate(uIDs):
+    print(val)
+    X[idx] = np.array([reg_leftPupilDiameter[val][10:dataSetLen]]).T
+    Y[idx] = np.array([reg_valence[val][10:dataSetLen]])
+
+########################################################################################################################
+
+# PREDPROCESIRANJE PODATKOV - SAMO ZA ZENICO
+pupilThreshold = 1
 if thresholdFeatures:
     X = threshold_data(X, pupilThreshold)
 
 print("data shape:")
 print(X.shape)
 print(Y.shape)
+print(X[0, 0:10])
+print(Y[0, 0:10])
 
 # STACIONARNOST CASOVNE VRSTE
-#test_stationarity(X.T[0, :, 0], 20, 'zenica', 1)
-#test_stationarity(Y[0, :], 20, 'label', 1)
 test_stationarity_dataset(X, Y, slidingWindowSize, 'before differencing')
 
 # DIFERENCIRANJE PODATKOV
@@ -261,8 +235,6 @@ if differencing:
     print(Y.shape)
 
     # ponovni test stacionarnosti
-    #test_stationarity(X.T[0, :, 0], 20, 'zenica', 1)
-    #test_stationarity(Y[0, :], 20, 'label', 1)
     test_stationarity_dataset(X, Y, slidingWindowSize, 'after differencing')
 
 plt.show()
@@ -313,14 +285,6 @@ if showData:
 
     plt.show()
 
-# test pretvorbe v nadzorovano ucenje
-#a = np.array([1, 2, 3, 4, 5, 6])
-#b = np.array([11, 12, 13, 14, 15, 16])
-#lag = 3
-#print("test pretvorbe v nadzorovano ucenje")
-#print(tsr_stack_indep(b, a, [lag])[1])
-#print(test_to_Supervised(a, b, lag)[0])
-
 
 def compute_r_squared(actual, predicted):
     return r2_score(actual, predicted)
@@ -335,7 +299,7 @@ print(X_train.shape, X_test.shape, y_train.shape, y_test.shape)
 # UCENJE MODELA
 # izvedemo ucenje za vsakega uporabnika
 # regresija z metodo najmanjsih kvadratov (statsmodels.api.OLS)
-# na podlagi trenutne in preteklih vrednosti featurejev napovedujemo trenutno vrednost labela
+# na podlagi trenutne in preteklih vrednosti znacilke napovedujemo trenutno vrednost labela
 for idx, uID in enumerate(uIDs):
 
     print("computation running for user", uID)
@@ -375,54 +339,46 @@ for idx, uID in enumerate(uIDs):
     yPred = mod_ft.fittedvalues
     yRef = y_test[idx, nBack:]
     fig, (ax2, ax3) = plt.subplots(2, 1)
-    #ax1.plot(yPred, label='predicted')
-    #ax1.plot(yRef, label='actual')
-    #ax1.legend(loc='best')
-    #ax1.set_title("Model fit to training set for user"+str(uID))
+    # ax1.plot(yPred, label='predicted')
+    # ax1.plot(yRef, label='actual')
+    # ax1.legend(loc='best')
+    # ax1.set_title("Model fit to training set for user"+str(uID))
 
     # 2. metoda: koeficiente modela se da dobiti in predikcije racunati rocno
     # print(mod_ft.params)
     # print(X.shape)
+
     yPredMan = np.zeros(y_test.shape[1] - nBack)
-    print(yPredMan.shape)
+    #print(yPredMan.shape)
     modelParams = np.flip(mod_ft.params, axis=0)  # parametre modela vrne v vrstnem redu: B0, B1, ...
-    print("model parameters: ", mod_ft.params)
+    #print("model parameters: ", mod_ft.params)
 
     for i in range(0, yPredMan.shape[0]):
-        #predData = X_test[idx, i:i+nUser[0]+1, :]
-        predData = X[idx, i:i + nUser[0], :]  # ce odrezemo stolpec trenutnih vrednosti znacilke
+        predData = X_test[idx, i:i+nUser[0]+1, :]
+        #predData = X[idx, i:i + nUser[0], :]  # ce odrezemo stolpec trenutnih vrednosti znacilke
         yPredMan[i] = np.dot(modelParams, predData)
 
 
     r2Man = compute_r_squared(yRef[0:(-nBack+1)], yPredMan[nBack-1:])  # popravimo zamike setov
 
-    ax2.plot(yPredMan[nBack-1:], label='predicted')
-    ax2.plot(yRef, label='actual')
+    ax2.plot(yRef[0:(-nBack+1)], label='actual')
+    ax2.plot(yPredMan[nBack-1:], label='fitted')
     ax2.legend(loc='best')
-    ax2.set_title("Manual model predict for user " + str(uID) + ", R2 score %.4f" % r2Man)
+    #ax2.set_title("Manual model predict for user " + str(uID) + ", R2 score %.4f" % r2Man)
+    ax2.set_title("Model results for user " + str(uID))
 
     # 3. metoda: predikcija z uporabo metode predict
     testData, _ = test_to_Supervised(X_test[idx], y_test[idx], nUser[0])
     yPredAuto = mod_ft.predict(testData)  # Call self.model.predict with self.params as the first argument.
 
-    ax3.plot(yPredAuto[nBack-1:], label='predicted')
     ax3.plot(yRef, label='actual')
+    ax3.plot(yPredAuto[nBack-1:], label='predicted')
     ax3.legend(loc='best')
     ax3.set_title("Model predict for user " + str(uID))
 
-    print(yRef.shape, yPredMan.shape, yPredAuto.shape)
-
-    #fig, ax = plt.subplots()
-    # This creates one graph with the scatterplot of observed values compared to fitted values.
-    #smAPI.graphics.plot_fit(mod_ft, 0, ax=ax)
-    #ax.set_ylabel('y')
-    #ax.set_xlabel('x')
-    #ax.set_title('Model fit for user'+str(uID))
+    print("oblike podatkov: ")
+    print("params: ", mod_ft.params.shape)
+    print("yRef", yRef.shape)
+    print("fitted values: ", yPredAuto.shape)
 
 plt.show()
-
-# dolocimo uspesnost prileganja modela - R^2
-# pove, koliko bolje se nas model prilega glede na povprecenje vrednosti (konstantni model)
-# R^2 je merilo, kako dobro se model prilega podatkom. Ce je enak 1 to pomeni da se model popolnoma prilega
-# podatkom. Ce je rezultat izven obmocja 0-1 to pomeni, da je model verjetno napacen, popolnoma narobe nastavljen,
-# imamo prevec znacilk ipd...
