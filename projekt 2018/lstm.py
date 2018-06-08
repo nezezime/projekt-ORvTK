@@ -11,16 +11,12 @@ from keras.models import Sequential
 from keras.layers import Dense, LSTM
 from keras import backend as K
 
-
-
 # TODO list
-# stacionarnost casovne vrste
-# poskusanje z dodajanjem/odstranjevanjem plasti
-# poskusanje iznicenja vpliva nakljucnega zacetnega stanja
-# prikaz avtokorelacije
-# prikazi, kako se napaka spreminja z epochi
+# vpliv zacetnega stanja mreze
+# pretvorba v nadzorovano ucenje za multivariantne vrste
+# uporaba drugacne zgradbe mreze
 
-# preveri ce tensorflow uporablja
+# preveri ce tensorflow uporablja GPU
 print(device_lib.list_local_devices())
 
 K.tensorflow_backend._get_available_gpus()
@@ -89,7 +85,6 @@ print(uDataSize)
 
 ######################################## NASTAVLJANJE MODELA ###########################################################
 # dolocimo, koliko vzorcev nazaj upostevamo
-# TODO
 nBack = 3
 
 # dolocimo velikost batcha pri ucenju (mora biti delitelj velikosti ucne mnozice)
@@ -105,15 +100,14 @@ testTrainRatio = 0.3
 nNeurons = 3
 
 # kolikokrat naj se izvede ucenje modela
-nEpoch = 300
+nEpoch = 1000
 
 # dolocimo vhodne znacilke
 # sestavimo podatkovni set
 XAllUsers = np.zeros(shape=[len(uIDs), dataSetLen, 2])
 for idx, val in enumerate(uIDs):
     print(val)
-    XAllUsers[idx] = np.array([#reg_leftPupilDiameter[val][0:dataSetLen],
-                               reg_emo_mouth[val][0:dataSetLen],
+    XAllUsers[idx] = np.array([reg_emo_mouth[val][0:dataSetLen],
                                reg_valence[val][0:dataSetLen]]).T          # label
 
 
@@ -124,25 +118,19 @@ plt.show()
 
 # pandas dataframe mora biti 2D -> delamo za vsakega uporabnika posebej
 print(XAllUsers.shape)
-XAllUsers = pd.DataFrame(XAllUsers[0, :, :])
+XAllUsers = pd.DataFrame(XAllUsers[0, :, :])  # tukaj izberi indeks uporabnika
 print("data shape:")
 print(XAllUsers.shape)
 print(XAllUsers.head())
 
-
-
 ########################################################################################################################
-
-# STACIONARNOST CASOVNE VRSTE
-# test_stationarity(X.T[0, :, 0], 12, 'usta', 0)
-# test_stationarity(X.T[0, :, 1], 12, 'desna zenica', 0)
-# test_stationarity(X.T[0, :, 2], 12, 'leva zenica', 0)
 
 # PRETVORBA V NADZOROVANO UCENJE
 # LSTM predvideva delitev na input (X) in output (Y)
-# rezultat prejsnjega opazovanja t-1 bomo uporabili kot input v naslednjem koraku t
-# trenutni casovni vrsti bomo dodali se zamaknjeno casovno vrsto -> polja NaN zaradi zamika nadomestimo z 0
-# ce zamikamo za vec vzorcev se stolpci dodajo za vse vmesne zamike
+# pretvorba po metodi drsecega okna
+# polja NaN zaradi zamika nadomestimo z 0
+
+
 def timeSeries_to_supervised(data, lag=1):
     df = pd.DataFrame(data)
     columns = [df.shift(i) for i in range(1, lag+1)]    # ustvarimo zamaknjene stolpce
@@ -170,15 +158,12 @@ train = Xnp[0:trainSize]
 test = Xnp[trainSize:]
 print("train shape: ", train.shape, "test shape: ", test.shape)
 
-# PREMIK CASOVNE VRSTE ZA SREDNJO VREDNOST
-# vrsto premaknem za srednjo vrednost navzdol, saj ima aktivacijska funkcija privzeto obmocje [-1, 1]
-
-
 # SKALIRANJE CASOVNE VRSTE
 # aktivacijska funkcija v nevronski mrezi (privzveto tanh) zahteva ustezno obmocje vrednosti v podatkovnem setu
 # koeficienta skaliranja naj bosta izracunana v ucni mnozici in upostevana tudi v testni, ter pri napovedih
-# s tem se izognemo vplivu testne mnozice na rezultate ucenja
 # nazaj se vrnemo s klicem scaler.inverse_transform()
+
+
 def scale_data(trainSet, testSet):
     scaler = MinMaxScaler(feature_range=(-1, 1))
     scaler = scaler.fit(trainSet)
@@ -225,38 +210,33 @@ def lstm_fit(trainSet, batchSize, nbEpoch, neurons):
     # @param neurons - stevilo nevronov, za bolj preproste probleme je dovolj 1-5
     # primer: 1000 vzorcev, batchSize=500 -> 1 epoch bo izveden v dveh iteracijah
 
-    X, y = trainSet[:, 0:-1], train[:, -1]      # odstranimo label
-    #print(X)
+    X, y = trainSet[:, 0:-1], train[:, -1]      # locimo label
     X = X.reshape(X.shape[0], 1, X.shape[1])    # naredimo 3D np array z eno samo plastjo
     model = Sequential()                        # zgradili bomo sekvencni model
-    #print("oblika x: ", X.shape)
-    #print(X)
 
     # batch_input_shape se rabi za stateful model v vhodni plasti
     # ce je plast stateful to pomeni, da bodo stanja, izracunana za trenutni batch zacetna stanja naslednjega batcha
     # to je kljucna lastnost LSTM
     layer = LSTM(neurons, batch_input_shape=(batchSize, X.shape[1], X.shape[2]), stateful=True)
-    model.add(layer)                            # sekvencnemu modelu dodamo plast TODO dodaj se kaksno plast
+    model.add(layer)                            # sekvencnemu modelu dodamo plast
     model.add(Dense(1))                         # aktivacijsko fjo doloca parameter activation
 
     # pripravimo model za ucenje
-    # loss - kriterij optimizacije
-    # optimizer - algoritem za optimizacijo (gradientni spust, adam, ...)
-    model.compile(loss='mean_squared_error', optimizer='adam')    # TODO uporabi R2
+    model.compile(loss='mean_squared_error', optimizer='adam')
 
     # ucenje v izbranem stevilu iteracij
     for i in range(nbEpoch):
+
         # shuffle=False ker hocemo da se LSTM uci iz sekvence opazovanj
         model.fit(X, y, epochs=1, batch_size=batchSize, verbose=0, shuffle=False)
         # ker imamo stateful model, moramo rocno na koncu epocha ponastaviti notranje stanje
         model.reset_states()
         print('\repoch {} of {} complete'.format(i+1, nEpoch), end='')
 
-
     print("\n")
+
     # nov model z ustreznim batch_size -> resujem batch_size problem pri forecastu
     nBatch = 1
-
     forecastModel = Sequential()
     forecastModel.add(LSTM(nNeurons, batch_input_shape=(nBatch, X.shape[1], X.shape[2]), stateful=True))
     forecastModel.add(Dense(1))
@@ -267,6 +247,7 @@ def lstm_fit(trainSet, batchSize, nbEpoch, neurons):
 
 
 print("\nFitting the dataset")
+
 # na rezultat ucenja lahko mocno vpliva zacetno stanje modela (dolocal naj bi ga Keras random seed)
 modelLSTM = lstm_fit(trainScaled, trainSize, nEpoch, nNeurons)
 
@@ -276,6 +257,8 @@ modelLSTM = lstm_fit(trainScaled, trainSize, nEpoch, nNeurons)
 # batch_size problem - tensorflow zahteva isto velikost vhodnih podatkov pri predikciji kot je bila velikost batcha
 #                      pri ucenju modela. Resitev je, da ustvarimo nov model z utezmi naucenega modela, kjer lahko
 #                      predikcije delamo za posamezne vzorce
+
+
 def lstm_forecast(model, batchSize, X):
     # @param X - pretekli vzorci, na podlagi katerih napovedujemo
     X = X.reshape(1, 1, len(X))
@@ -286,22 +269,14 @@ def lstm_forecast(model, batchSize, X):
     return yPred[0, 0]
 
 
-def compute_r_squared():
-    return 0
-
-
-
-
-# walk-forward validacija modela
+# validacija modela
 print("\nValidation")
 yPred = np.empty(len(testScaled))  # hrani rezultate predikcije
 yRef = np.empty(len(testScaled))
-for i in range(len(testScaled)):
+print(testScaled.shape)
 
-    # napoved za en korak naprej
-    #Xfc, yfc = testScaled[i, 0:-1], testScaled[i, -1]  # locitev labela
-    #yhat = lstm_forecast(modelLSTM, 1, Xfc)
-    #yhat = test[i]
+# TODO veckratno ucenje modela za walk-forward validacijo
+for i in range(len(testScaled)):
 
     testX, testY = testScaled[i, 0:-1], testScaled[i, -1]
     testX = testX.reshape(1, 1, len(testX))
@@ -311,13 +286,9 @@ for i in range(len(testScaled)):
 
     # inverzno skaliranje
     #yhat = inverse_scale_data(MMscaler, testX, yhat)
-    #inv = np.array([1, 1, 1, 1, 1, 1])
     yhat = MMscaler.inverse_transform(invRescaleData)
-    #print(yhat.shape)
-    #print(test.shape)
 
     # shrani napoved
-    #yPred[i] = yhat
     #print("Sample: {}, Predicted: {}, Expected: {}".format(i+1, yhat[0, -1], test[i, -1]))
     yPred[i] = yhat[0, -1]
     yRef[i] = test[i, -1]
@@ -335,6 +306,4 @@ plt.title('Forecast results, epoch number: {}'.format(nEpoch))
 plt.legend(loc='best')
 plt.show()
 
-
 print("\nDone")
-
